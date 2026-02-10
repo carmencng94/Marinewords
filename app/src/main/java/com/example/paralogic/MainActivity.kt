@@ -1,31 +1,29 @@
 package com.example.paralogic
 
-// Importamos las herramientas necesarias. Piensa en esto como "traer la caja de herramientas" al taller.
+// Importamos las herramientas necesarias.
 import android.content.Context
 import android.media.MediaPlayer
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Stars
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -43,27 +41,25 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
-// ==========================================================
 // 1. MODELOS DE DATOS (LOS MOLDES DE INFORMACIÓN)
-// ==========================================================
 
 /**
  * Las "Data Class" son como carpetas donde guardamos datos ordenados.
- * @Serializable es una etiqueta que le dice a Kotlin: "Prepara esta carpeta para que
- * pueda convertirse en un mensaje de texto largo (JSON) y guardarse en un archivo".
+ * @Serializable le dice a Kotlin: "Prepara esta carpeta para que pueda convertirse
+ * en un mensaje de texto largo (JSON) y guardarse en un archivo".
  */
 @Serializable
 data class DatosNivel(
-    val letraCentral: String,      // La letra roja obligatoria
-    var letrasExteriores: List<String>, // Las 6 letras azules
+    val letraCentral: String,      // La letra dorada obligatoria
+    var letrasExteriores: List<String>, // Las 6 letras blancas
     val soluciones: Set<String>,   // Todas las palabras posibles (Set evita repetidas)
     val puntuacionMaxima: Int      // Total de puntos del nivel
 )
 
 @Serializable
 data class RecursoJuego(
-    val diccionarioFiltrado: Set<String>, // Todas las palabras de 3 a 10 letras del idioma
-    val listaPangramas: List<String>      // Solo las palabras que tienen 7 letras distintas
+    val diccionarioFiltrado: Set<String>, // Palabras de 3 a 10 letras del idioma
+    val listaPangramas: List<String>      // Palabras que tienen 7 letras distintas
 )
 
 /**
@@ -73,57 +69,46 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Esto hace que la app use toda la pantalla, incluso detrás de la hora y la batería.
+        // Hace que la app use toda la pantalla, incluso detrás de la batería.
         enableEdgeToEdge()
 
         setContent {
-            // ParalogicTheme aplica tus colores y estilos personalizados.
+            // ParalogicTheme aplica tus colores y estilos náuticos.
             ParalogicTheme {
-                // Llamamos a la primera función que controla si cargamos datos o jugamos.
                 PantallaDeControl()
             }
         }
     }
 }
 
-// ==========================================================
-// 2. SISTEMA DE MÚSICA DE FONDO (DISPOSABLE EFFECT)
-// ==========================================================
+// 2. SISTEMA DE MÚSICA DE FONDO
 
 /**
- * Gestionar sonido en apps es delicado. Si no lo hacemos bien, la música sigue sonando
- * incluso si cierras la app.
+ * Gestionar sonido es delicado. 'remember' hace que Android recuerde el objeto
+ * para que la música no intente empezar de cero cada vez que tocas un botón.
  */
 @Composable
 fun MusicaDeFondo() {
     val contexto = LocalContext.current
-
-    // 'remember' hace que Android "recuerde" este objeto.
-    // Sin esto, la música intentaría empezar de cero cada vez que tocas un botón.
     val mp = remember {
-        // Buscamos el archivo en la carpeta res/raw/tema_fondo_di
         MediaPlayer.create(contexto, R.raw.musicafondo).apply {
-            isLooping = true     // Cuando acabe, que empiece otra vez.
-            setVolume(0.2f, 0.2f) // Volumen bajito (30%) para no molestar.
+            isLooping = true     // Bucle infinito.
+            setVolume(0.2f, 0.2f) // Volumen suave.
         }
     }
 
-    // 'DisposableEffect' es como un interruptor inteligente:
-    // Se enciende al entrar a la pantalla y tiene un "limpiador" al salir.
+    // 'DisposableEffect' es como un interruptor inteligente: se enciende al entrar
+    // y tiene un "limpiador" (onDispose) al salir para liberar memoria RAM.
     DisposableEffect(Unit) {
-        mp.start() // Dale al Play.
-
-        // Esta parte es CRUCIAL: se ejecuta cuando la pantalla se destruye o cierras la app.
+        mp.start()
         onDispose {
-            mp.stop()    // Para la música.
-            mp.release() // Borra el reproductor de la memoria RAM para que el móvil no vaya lento.
+            mp.stop()
+            mp.release()
         }
     }
 }
 
-// ==========================================================
 // 3. GESTOR DE CARGA (LA ADUANA)
-// ==========================================================
 
 /**
  * Esta función decide qué mostrar: ¿Una barrita de carga o el juego?
@@ -131,100 +116,76 @@ fun MusicaDeFondo() {
 @Composable
 fun PantallaDeControl() {
     val contexto = LocalContext.current
-
-    // Estos son estados (States). Si cambian, la pantalla se actualiza sola ("Recomposición").
     var recursos by remember { mutableStateOf<RecursoJuego?>(null) }
     var nivelInicial by remember { mutableStateOf<DatosNivel?>(null) }
 
-    // 'LaunchedEffect' ejecuta código una sola vez. Es perfecto para cargar archivos al inicio.
+    // 'LaunchedEffect' carga archivos al inicio sin bloquear la pantalla.
     LaunchedEffect(Unit) {
-        // 'withContext(Dispatchers.IO)' significa: "Haz este trabajo pesado en segundo plano".
-        // Así la pantalla no se queda congelada mientras lee miles de palabras.
-        withContext(Dispatchers.IO) {
-            val r = cargarRecursosConCacheSegura(contexto) // Lee el diccionario
-            val n = generarNivelPorDificultad(r, 1)        // Crea el primer nivel
-
-            // Guardamos los resultados en los estados. Esto avisa a Compose para que cambie la pantalla.
+        withContext(Dispatchers.IO) { // Trabajo pesado en segundo plano.
+            val r = cargarRecursosConCacheSegura(contexto)
+            val n = generarNivelPorDificultad(r, 1)
             recursos = r
             nivelInicial = n
         }
     }
 
-    // Lógica visual:
     if (recursos == null || nivelInicial == null) {
-        // Si aún no han cargado los datos, dibujamos la carga.
         Box(modifier = Modifier.fillMaxSize().background(AzulProfundo), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = DoradoTesoro) // El circulito que da vueltas.
+                CircularProgressIndicator(color = DoradoTesoro)
                 Spacer(Modifier.height(20.dp))
                 Text("Navegando a tu destino...", color = BlancoEspuma, fontWeight = FontWeight.Bold)
             }
         }
     } else {
-        // Si ya tenemos los datos (recursos y nivel), saltamos al juego real.
         PantallaPrincipalConMenu(recursos!!, nivelInicial!!, 1)
     }
 }
 
 /**
  * SISTEMA DE CACHÉ: Es como una "chuleta".
- * La primera vez lee el archivo .txt (lento). La segunda lee un .json (rápido).
+ * La primera vez lee el .txt (lento). La segunda lee el .json (rápido).
  */
 fun cargarRecursosConCacheSegura(context: Context): RecursoJuego {
-    // Creamos un archivo en la memoria interna del móvil.
     val archivoCache = File(context.filesDir, "memoria_maestra_v7.json")
 
-    // Paso 1: ¿Ya existe el archivo rápido?
     if (archivoCache.exists()) {
         try {
             val contenido = archivoCache.readText()
-            // Convertimos el texto JSON de vuelta a la clase RecursoJuego.
             return Json.decodeFromString<RecursoJuego>(contenido)
         } catch (e: Exception) {
-            // Si algo falló (archivo corrupto), lo borramos para forzar recarga.
             archivoCache.delete()
         }
     }
 
-    // Paso 2: Si no hay caché, leemos el diccionario original línea por línea.
     val completo = mutableSetOf<String>()
     val pangramas = mutableListOf<String>()
     try {
-        // Abrimos el archivo de la carpeta 'assets'.
         context.assets.open("dictionary_es.txt").bufferedReader().use { reader ->
             reader.forEachLine { linea ->
                 val limpia = linea.trim().lowercase()
-                // Aplicamos tu regla: Solo palabras de 3 a 10 letras.
                 if (limpia.length in 3..10) {
                     completo.add(limpia)
-                    // Si tiene 7 letras distintas, guárdalo para crear niveles con él.
                     if (limpia.toSet().size == 7) pangramas.add(limpia)
                 }
             }
         }
         val nuevoRecurso = RecursoJuego(completo, pangramas)
-        // Guardamos este resultado en JSON para que la próxima vez sea instantáneo.
         archivoCache.writeText(Json.encodeToString(nuevoRecurso))
         return nuevoRecurso
     } catch (e: Exception) {
-        // Red de seguridad: si el archivo de texto no existe, devolvemos algo para que no falle.
         return RecursoJuego(setOf("mar", "tesoro"), listOf("marinos"))
     }
 }
 
-// ==========================================================
 // 4. INTERFAZ PRINCIPAL (EL CORAZÓN DEL JUEGO)
-// ==========================================================
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, nivelInicialNumero: Int) {
-    // Encendemos la música.
     MusicaDeFondo()
 
     // --- VARIABLES DE ESTADO ---
-    // En Compose, si quieres que algo cambie en pantalla (como los puntos),
-    // debes usar 'mutableStateOf' y 'remember'.
     var nivelActual by remember { mutableStateOf(nivelCargado) }
     var numeroDeNivel by remember { mutableIntStateOf(nivelInicialNumero) }
     var palabraActual by remember { mutableStateOf("") }
@@ -233,50 +194,37 @@ fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, n
     var palabrasEncontradas by remember { mutableStateOf(setOf<String>()) }
     var solucionesReveladas by remember { mutableStateOf(false) }
 
-    // Herramientas para el menú lateral (Drawer).
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope() // Se usa para lanzar animaciones (como abrir el menú).
+    val scope = rememberCoroutineScope()
+    val rangoActual = when(numeroDeNivel) { in 1..3 -> "Grumete"; in 4..7 -> "Marinero"; else -> "Capitán" }
 
-    // Título dinámico: cambia según el número de nivel.
-    val rangoActual = when(numeroDeNivel) {
-        in 1..3 -> "Grumete"
-        in 4..7 -> "Marinero"
-        else -> "Capitán"
-    }
-
-    // El 'ModalNavigationDrawer' es el componente que permite deslizar el menú desde la izquierda.
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
-            // Esto es lo que hay DENTRO del menú lateral.
             ModalDrawerSheet(
                 drawerState = drawerState,
                 drawerContainerColor = AzulProfundo,
-                modifier = Modifier.width(300.dp).fillMaxHeight()
+                modifier = Modifier.width(320.dp).fillMaxHeight()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("MAPA DE SOLUCIONES", color = DoradoTesoro, fontWeight = FontWeight.Black)
+                    Text("MAPA DE SOLUCIONES", color = DoradoTesoro, fontWeight = FontWeight.Black, fontSize = 20.sp)
                     Button(
                         onClick = { solucionesReveladas = !solucionesReveladas },
                         colors = ButtonDefaults.buttonColors(containerColor = MaderaTimon),
                         modifier = Modifier.padding(vertical = 10.dp).fillMaxWidth()
-                    ) {
-                        Text(if (solucionesReveladas) "OCULTAR MAPA" else "VER MAPA COMPLETO")
-                    }
-                    // LazyColumn es como un listado que solo gasta memoria en lo que se ve.
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    ) { Text(if (solucionesReveladas) "OCULTAR MAPA" else "VER MAPA COMPLETO") }
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(nivelActual.soluciones.toList().sorted()) { palabra ->
                             val encontrada = palabrasEncontradas.contains(palabra)
                             Surface(
-                                color = if (encontrada) DoradoTesoro else BlancoEspuma.copy(alpha = 0.1f),
+                                color = if (encontrada) DoradoTesoro else BlancoEspuma.copy(alpha = 0.15f),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    // Si no la has encontrado, se ve con puntitos.
+                                Row(modifier = Modifier.padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                     val texto = if (encontrada || solucionesReveladas) palabra.uppercase() else "• ".repeat(palabra.length)
-                                    Text(texto, color = if (encontrada) Color.Black else BlancoEspuma)
-                                    if (encontrada) Text("✓", color = Color.Black)
+                                    Text(text = texto, color = if (encontrada) Color.Black else BlancoEspuma, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                    if (encontrada) Text("✓", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 20.sp)
                                 }
                             }
                         }
@@ -285,14 +233,10 @@ fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, n
             }
         }
     ) {
-        // CAPA DE FONDO (Debajo de todo)
         Box(modifier = Modifier.fillMaxSize()) {
-            // Imagen del mar
             Image(painter = painterResource(id = R.drawable.fondo2), contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            // Capa oscura para que las letras blancas se lean bien.
-            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)))
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f)))
 
-            // Scaffold es el "esqueleto" de la pantalla (Barra arriba, barra abajo y centro).
             Scaffold(
                 containerColor = Color.Transparent,
                 topBar = {
@@ -305,127 +249,130 @@ fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, n
                         },
                         colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
                     )
-                },
-                bottomBar = {
-                    // SECCIÓN INFERIOR: Botín acumulado.
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaderaTimon),
-                        modifier = Modifier.fillMaxWidth().padding(16.dp).height(65.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Row(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Text("BOTÍN TOTAL", color = Color.White, fontWeight = FontWeight.Bold)
-                            Text("$puntos Puntos", color = DoradoTesoro, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                        }
-                    }
                 }
             ) { innerPadding ->
-                // CONTENIDO CENTRAL (El juego en sí)
                 Column(
                     modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Top
                 ) {
-                    // 1. EL TIMÓN (Componente personalizado que creaste)
+                    // SECCIÓN DEL BOTÍN: Ubicado arriba para jerarquía visual.
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaderaTimon),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).height(65.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                    ) {
+                        Row(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Stars, contentDescription = null, tint = DoradoTesoro)
+                                Spacer(Modifier.width(8.dp))
+                                Text("BOTÍN TOTAL", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            Text("$puntos Puntos", color = DoradoTesoro, fontSize = 24.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 1. EL TIMÓN
                     PanelDeJuego(
                         letrasExteriores = nivelActual.letrasExteriores,
                         letraObligatoria = nivelActual.letraCentral,
                         alPulsarLetra = { if (palabraActual.length < 10) palabraActual += it }
                     )
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
 
-                    // 2. CAJA DE ENTRADA BLANCA
-                    Surface(color = Color.White.copy(alpha = 0.9f), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth(0.8f).height(55.dp)) {
+                    // 2. CAJA DE ENTRADA (Cerca del timón para comodidad)
+                    Surface(
+                        color = Color.White.copy(alpha = 0.9f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(0.85f).height(60.dp),
+                        border = BorderStroke(3.dp, MaderaTimon)
+                    ) {
                         Box(contentAlignment = Alignment.Center) {
-                            Text(palabraActual.uppercase(), fontSize = 32.sp, fontWeight = FontWeight.Black, color = Color.DarkGray)
+                            Text(palabraActual.uppercase(), fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color.DarkGray)
                         }
                     }
 
-                    Text(mensajeFeedback, color = Color.White, modifier = Modifier.padding(vertical = 10.dp))
+                    Text(text = mensajeFeedback, color = DoradoTesoro, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(vertical = 10.dp))
 
                     // 3. BOTONES DE ACCIÓN
                     Row {
                         Button(
                             onClick = { if (palabraActual.isNotEmpty()) palabraActual = palabraActual.dropLast(1) },
                             colors = ButtonDefaults.buttonColors(containerColor = MaderaTimon)
-                        ) { Text("BORRAR") }
-
+                        ) { Text("BORRAR", fontWeight = FontWeight.Bold) }
                         Spacer(modifier = Modifier.width(16.dp))
-
                         Button(
                             onClick = {
                                 val intento = palabraActual.lowercase().trim()
-                                // Lógica de validación: ¿está en el diccionario del nivel?
                                 if (nivelActual.soluciones.contains(intento) && !palabrasEncontradas.contains(intento)) {
                                     palabrasEncontradas = palabrasEncontradas + intento
-                                    puntos += (intento.length - 2) // Por ejemplo: 3 letras = 1 punto.
+                                    puntos += (intento.length - 2)
                                     mensajeFeedback = "¡Excelente hallazgo!"
                                     palabraActual = ""
-                                } else {
-                                    mensajeFeedback = "Esa no sirve, marinero"
-                                }
+                                } else { mensajeFeedback = "Esa no sirve, marinero" }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = DoradoTesoro)
-                        ) { Text("ENVIAR", color = Color.Black, fontWeight = FontWeight.Bold) }
+                        ) { Text("ENVIAR", color = Color.Black, fontWeight = FontWeight.Black) }
                     }
 
-                    Spacer(modifier = Modifier.height(30.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
-                    // 4. HISTORIAL DE PALABRAS (LazyRow para deslizar de lado)
+                    // 4. HISTORIAL DE PALABRAS (Recuadro más opaco para legibilidad)
                     Column(modifier = Modifier.fillMaxWidth()) {
-                        Text("PALABRAS DESCUBIERTAS (${palabrasEncontradas.size})", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Surface(color = Color.White.copy(alpha = 0.15f), shape = RoundedCornerShape(12.dp), modifier = Modifier.fillMaxWidth().height(50.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.History, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("PALABRAS DESCUBIERTAS (${palabrasEncontradas.size})", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            color = Color.White.copy(alpha = 0.45f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().height(60.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                        ) {
                             LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                                 items(palabrasEncontradas.toList()) { palabra ->
-                                    Text(palabra.uppercase() + "   ", color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(text = palabra.uppercase() + "   ", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
                                 }
                             }
                         }
                     }
+
+                    // Spacer final con weight(1f) para empujar todo el contenido hacia arriba.
+                    Spacer(Modifier.weight(1f))
                 }
             }
         }
     }
 }
 
-// ==========================================================
 // 5. CEREBRO: GENERADOR DE NIVELES (ALGORITMO)
-// ==========================================================
 
 /**
- * Esta función no dibuja nada, es pura lógica matemática.
+ * Esta función es pura lógica matemática. Elige un pangrama, baraja
+ * letras y filtra el diccionario para asegurar un nivel de calidad.
  */
 fun generarNivelPorDificultad(recursos: RecursoJuego, nivel: Int): DatosNivel {
     val minSoluciones = 10
     var resultado: DatosNivel? = null
     var intentos = 0
-
-    // Bucle 'while': repetimos el proceso hasta encontrar un nivel que tenga sentido jugar.
     while (resultado == null && intentos < 100) {
         intentos++
-
-        // Elige una palabra de 7 letras al azar de la lista.
         val pangrama = recursos.listaPangramas.randomOrNull() ?: "marinos"
-
-        // Mezclamos sus letras y elegimos la primera para el centro.
         val letrasSet = pangrama.toSet().map { it.toString().uppercase() }.shuffled()
         val central = letrasSet[0]
         val validasChar = pangrama.lowercase().toSet()
-
-        // Filtrado: Buscamos en el diccionario general qué palabras cumplen que:
-        // 1. Contengan la letra central.
-        // 2. SOLO usen letras de las 7 que hemos elegido.
         val soluciones = recursos.diccionarioFiltrado.filter { p ->
             p.contains(central.lowercase()) && p.all { it in validasChar }
         }.toSet()
-
-        // Si el nivel tiene al menos 10 palabras posibles, lo damos por bueno.
         if (soluciones.size >= minSoluciones) {
             resultado = DatosNivel(central, letrasSet.subList(1, 7), soluciones, 0)
         }
     }
-    // Si después de 100 intentos falla todo, devolvemos un nivel de emergencia.
     return resultado ?: DatosNivel("E", listOf("A", "T", "M", "S", "R", "O"), setOf("tesoro", "meta"), 0)
 }
