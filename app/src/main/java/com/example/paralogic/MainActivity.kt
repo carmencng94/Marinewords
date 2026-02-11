@@ -1,6 +1,6 @@
 package com.example.paralogic
 
-// Importo las herramientas necesarias para que mi app sepa dibujar, sonar y pensar.
+// Importo las herramientas necesarias, incluyendo el nuevo "espía" del ciclo de vida.
 import android.content.Context
 import android.media.MediaPlayer
 import android.os.Bundle
@@ -26,10 +26,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.paralogic.components.PanelDeJuego
 import com.example.paralogic.ui.theme.*
 import kotlinx.coroutines.Dispatchers
@@ -68,11 +70,13 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- 2. MI AMBIENTACIÓN SONORA ---
+// --- 2. MI AMBIENTACIÓN SONORA (CON CONTROL DE CICLO DE VIDA) ---
 
 @Composable
 fun MusicaDeFondo() {
     val contexto = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     val mp = remember {
         MediaPlayer.create(contexto, R.raw.musicafondo)?.apply {
             isLooping = true
@@ -80,16 +84,30 @@ fun MusicaDeFondo() {
         }
     }
 
-    DisposableEffect(mp) {
-        mp?.start()
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    mp?.pause()
+                }
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> {
+                    mp?.start()
+                }
+                else -> {}
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+
         onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
             mp?.stop()
             mp?.release()
         }
     }
 }
 
-// --- 3. MI GESTOR DE CARGA CON TÍTULO PRINCIPAL ---
+// --- 3. MI GESTOR DE CARGA CON TÍTULO CORREGIDO ---
 
 @Composable
 fun PantallaDeControl() {
@@ -109,6 +127,7 @@ fun PantallaDeControl() {
     if (recursos == null || nivelInicial == null) {
         Box(modifier = Modifier.fillMaxSize().background(AzulProfundo), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                // **CORRECCIÓN DEFINITIVA**: `letterSpacing` reducido a un valor sutil.
                 Text(
                     text = "MARINE WORDS",
                     color = DoradoTesoro,
@@ -119,6 +138,7 @@ fun PantallaDeControl() {
                 Spacer(Modifier.height(40.dp))
                 CircularProgressIndicator(color = DoradoTesoro, strokeWidth = 6.dp)
                 Spacer(Modifier.height(20.dp))
+                // **SUBTÍTULO RESTAURADO**: Con un espaciado elegante.
                 Text(
                     text = "PREPARANDO LA TRAVESÍA",
                     color = BlancoEspuma.copy(alpha = 0.8f),
@@ -163,7 +183,7 @@ fun cargarRecursosConCacheSegura(context: Context): RecursoJuego {
     }
 }
 
-// --- 4. MI INTERFAZ DE JUEGO DINÁMICA --- (CORREGIDA)
+// --- 4. MI INTERFAZ DE JUEGO DINÁMICA ---
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -259,13 +279,11 @@ fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, n
                     )
                 }
             ) { innerPadding ->
-                // **CORRECCIÓN**: He cambiado `SpaceEvenly` por una estructura de 3 bloques con `weight`.
                 Column(
                     modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly
                 ) {
-
-                    // --- BLOQUE SUPERIOR (Información) ---
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaderaTimon),
@@ -294,23 +312,12 @@ fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, n
                         )
                     }
 
-                    // --- BLOQUE CENTRAL (Juego) ---
-                    // Este `Column` usa `weight(1f)` para ocupar todo el espacio sobrante
-                    // y luego centra el timón en su interior.
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        PanelDeJuego(
-                            letrasExteriores = nivelActual.letrasExteriores,
-                            letraObligatoria = nivelActual.letraCentral,
-                            alPulsarLetra = { if (palabraActual.length < 10) palabraActual += it }
-                        )
-                    }
+                    PanelDeJuego(
+                        letrasExteriores = nivelActual.letrasExteriores,
+                        letraObligatoria = nivelActual.letraCentral,
+                        alPulsarLetra = { if (palabraActual.length < 10) palabraActual += it }
+                    )
 
-
-                    // --- BLOQUE INFERIOR (Controles) ---
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 16.dp)) {
                         Surface(
                             color = Color.White.copy(alpha = 0.9f),
