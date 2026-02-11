@@ -1,13 +1,12 @@
 package com.example.paralogic
 
-// Importamos las herramientas necesarias.
+// Importo las herramientas necesarias para que mi app sepa dibujar, sonar y pensar.
 import android.content.Context
 import android.media.MediaPlayer
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,13 +16,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Stars
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -41,39 +40,27 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.io.File
 
-// 1. MODELOS DE DATOS (LOS MOLDES DE INFORMACIÓN)
+// --- 1. MIS MOLDES DE INFORMACIÓN ---
 
-/**
- * Las "Data Class" son como carpetas donde guardamos datos ordenados.
- * @Serializable le dice a Kotlin: "Prepara esta carpeta para que pueda convertirse
- * en un mensaje de texto largo (JSON) y guardarse en un archivo".
- */
 @Serializable
 data class DatosNivel(
-    val letraCentral: String,      // La letra dorada obligatoria
-    var letrasExteriores: List<String>, // Las 6 letras blancas
-    val soluciones: Set<String>,   // Todas las palabras posibles (Set evita repetidas)
-    val puntuacionMaxima: Int      // Total de puntos del nivel
+    val letraCentral: String,
+    var letrasExteriores: List<String>,
+    val soluciones: Set<String>,
+    val puntuacionMaxima: Int
 )
 
 @Serializable
 data class RecursoJuego(
-    val diccionarioFiltrado: Set<String>, // Palabras de 3 a 10 letras del idioma
-    val listaPangramas: List<String>      // Palabras que tienen 7 letras distintas
+    val diccionarioFiltrado: Set<String>,
+    val listaPangramas: List<String>
 )
 
-/**
- * Esta es la clase principal. Es el punto de partida que Android busca al abrir la app.
- */
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Hace que la app use toda la pantalla, incluso detrás de la batería.
         enableEdgeToEdge()
-
         setContent {
-            // ParalogicTheme aplica tus colores y estilos náuticos.
             ParalogicTheme {
                 PantallaDeControl()
             }
@@ -81,47 +68,37 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// 2. SISTEMA DE MÚSICA DE FONDO
+// --- 2. MI AMBIENTACIÓN SONORA ---
 
-/**
- * Gestionar sonido es delicado. 'remember' hace que Android recuerde el objeto
- * para que la música no intente empezar de cero cada vez que tocas un botón.
- */
 @Composable
 fun MusicaDeFondo() {
     val contexto = LocalContext.current
     val mp = remember {
-        MediaPlayer.create(contexto, R.raw.musicafondo).apply {
-            isLooping = true     // Bucle infinito.
-            setVolume(0.2f, 0.2f) // Volumen suave.
+        MediaPlayer.create(contexto, R.raw.musicafondo)?.apply {
+            isLooping = true
+            setVolume(0.2f, 0.2f)
         }
     }
 
-    // 'DisposableEffect' es como un interruptor inteligente: se enciende al entrar
-    // y tiene un "limpiador" (onDispose) al salir para liberar memoria RAM.
-    DisposableEffect(Unit) {
-        mp.start()
+    DisposableEffect(mp) {
+        mp?.start()
         onDispose {
-            mp.stop()
-            mp.release()
+            mp?.stop()
+            mp?.release()
         }
     }
 }
 
-// 3. GESTOR DE CARGA (LA ADUANA)
+// --- 3. MI GESTOR DE CARGA CON TÍTULO PRINCIPAL ---
 
-/**
- * Esta función decide qué mostrar: ¿Una barrita de carga o el juego?
- */
 @Composable
 fun PantallaDeControl() {
     val contexto = LocalContext.current
     var recursos by remember { mutableStateOf<RecursoJuego?>(null) }
     var nivelInicial by remember { mutableStateOf<DatosNivel?>(null) }
 
-    // 'LaunchedEffect' carga archivos al inicio sin bloquear la pantalla.
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) { // Trabajo pesado en segundo plano.
+        withContext(Dispatchers.IO) {
             val r = cargarRecursosConCacheSegura(contexto)
             val n = generarNivelPorDificultad(r, 1)
             recursos = r
@@ -132,9 +109,23 @@ fun PantallaDeControl() {
     if (recursos == null || nivelInicial == null) {
         Box(modifier = Modifier.fillMaxSize().background(AzulProfundo), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                CircularProgressIndicator(color = DoradoTesoro)
+                Text(
+                    text = "MARINE WORDS",
+                    color = DoradoTesoro,
+                    fontSize = 50.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.5.sp
+                )
+                Spacer(Modifier.height(40.dp))
+                CircularProgressIndicator(color = DoradoTesoro, strokeWidth = 6.dp)
                 Spacer(Modifier.height(20.dp))
-                Text("Navegando a tu destino...", color = BlancoEspuma, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "PREPARANDO LA TRAVESÍA",
+                    color = BlancoEspuma.copy(alpha = 0.8f),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp
+                )
             }
         }
     } else {
@@ -142,17 +133,11 @@ fun PantallaDeControl() {
     }
 }
 
-/**
- * SISTEMA DE CACHÉ: Es como una "chuleta".
- * La primera vez lee el .txt (lento). La segunda lee el .json (rápido).
- */
 fun cargarRecursosConCacheSegura(context: Context): RecursoJuego {
     val archivoCache = File(context.filesDir, "memoria_maestra_v7.json")
-
     if (archivoCache.exists()) {
         try {
-            val contenido = archivoCache.readText()
-            return Json.decodeFromString<RecursoJuego>(contenido)
+            return Json.decodeFromString<RecursoJuego>(archivoCache.readText())
         } catch (e: Exception) {
             archivoCache.delete()
         }
@@ -161,9 +146,9 @@ fun cargarRecursosConCacheSegura(context: Context): RecursoJuego {
     val completo = mutableSetOf<String>()
     val pangramas = mutableListOf<String>()
     try {
-        context.assets.open("dictionary_es.txt").bufferedReader().use { reader ->
-            reader.forEachLine { linea ->
-                val limpia = linea.trim().lowercase()
+        context.assets.open("dictionary_es.txt").bufferedReader().useLines { lineas ->
+            lineas.forEach {
+                val limpia = it.trim().lowercase()
                 if (limpia.length in 3..10) {
                     completo.add(limpia)
                     if (limpia.toSet().size == 7) pangramas.add(limpia)
@@ -178,14 +163,13 @@ fun cargarRecursosConCacheSegura(context: Context): RecursoJuego {
     }
 }
 
-// 4. INTERFAZ PRINCIPAL (EL CORAZÓN DEL JUEGO)
+// --- 4. MI INTERFAZ DE JUEGO DINÁMICA --- (CORREGIDA)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, nivelInicialNumero: Int) {
     MusicaDeFondo()
 
-    // --- VARIABLES DE ESTADO ---
     var nivelActual by remember { mutableStateOf(nivelCargado) }
     var numeroDeNivel by remember { mutableIntStateOf(nivelInicialNumero) }
     var palabraActual by remember { mutableStateOf("") }
@@ -196,35 +180,59 @@ fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, n
 
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
     val rangoActual = when(numeroDeNivel) { in 1..3 -> "Grumete"; in 4..7 -> "Marinero"; else -> "Capitán" }
+
+    val metaPalabras = 5
+    val progreso = (palabrasEncontradas.size.toFloat() / metaPalabras.toFloat()).coerceAtMost(1f)
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
-                drawerState = drawerState,
                 drawerContainerColor = AzulProfundo,
-                modifier = Modifier.width(320.dp).fillMaxHeight()
+                modifier = Modifier.width(300.dp).fillMaxHeight()
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("MAPA DE SOLUCIONES", color = DoradoTesoro, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                    Text("MAPA DE SOLUCIONES", color = DoradoTesoro, fontWeight = FontWeight.Black)
+                    Spacer(modifier = Modifier.height(15.dp))
+                    Text("Tu Botín Descubierto (${palabrasEncontradas.size})", color = BlancoEspuma, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(palabrasEncontradas.toList()) { palabra ->
+                            Surface(color = DoradoTesoro, shape = RoundedCornerShape(8.dp)) {
+                                Text(
+                                    text = palabra.uppercase(),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(15.dp))
+
                     Button(
                         onClick = { solucionesReveladas = !solucionesReveladas },
                         colors = ButtonDefaults.buttonColors(containerColor = MaderaTimon),
                         modifier = Modifier.padding(vertical = 10.dp).fillMaxWidth()
                     ) { Text(if (solucionesReveladas) "OCULTAR MAPA" else "VER MAPA COMPLETO") }
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         items(nivelActual.soluciones.toList().sorted()) { palabra ->
                             val encontrada = palabrasEncontradas.contains(palabra)
                             Surface(
-                                color = if (encontrada) DoradoTesoro else BlancoEspuma.copy(alpha = 0.15f),
+                                color = if (encontrada) DoradoTesoro.copy(alpha = 0.6f) else BlancoEspuma.copy(alpha = 0.15f),
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(modifier = Modifier.padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Row(modifier = Modifier.padding(12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
                                     val texto = if (encontrada || solucionesReveladas) palabra.uppercase() else "• ".repeat(palabra.length)
                                     Text(text = texto, color = if (encontrada) Color.Black else BlancoEspuma, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                                    if (encontrada) Text("✓", color = Color.Black, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                                    if (encontrada) Text("✓", color = Color.Black)
                                 }
                             }
                         }
@@ -251,128 +259,114 @@ fun PantallaPrincipalConMenu(recursos: RecursoJuego, nivelCargado: DatosNivel, n
                     )
                 }
             ) { innerPadding ->
+                // **CORRECCIÓN**: He cambiado `SpaceEvenly` por una estructura de 3 bloques con `weight`.
                 Column(
                     modifier = Modifier.fillMaxSize().padding(innerPadding).padding(horizontal = 20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Top
                 ) {
-                    // SECCIÓN DEL BOTÍN: Ubicado arriba para jerarquía visual.
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = MaderaTimon),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp).height(65.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-                    ) {
-                        Row(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Stars, contentDescription = null, tint = DoradoTesoro)
-                                Spacer(Modifier.width(8.dp))
-                                Text("BOTÍN TOTAL", color = Color.White, fontWeight = FontWeight.Bold)
-                            }
-                            Text("$puntos Puntos", color = DoradoTesoro, fontSize = 24.sp, fontWeight = FontWeight.Black)
-                        }
-                    }
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // 1. EL TIMÓN
-                    PanelDeJuego(
-                        letrasExteriores = nivelActual.letrasExteriores,
-                        letraObligatoria = nivelActual.letraCentral,
-                        alPulsarLetra = { if (palabraActual.length < 10) palabraActual += it }
-                    )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // 2. CAJA DE ENTRADA (Cerca del timón para comodidad)
-                    Surface(
-                        color = Color.White.copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(0.85f).height(60.dp),
-                        border = BorderStroke(3.dp, MaderaTimon)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(palabraActual.uppercase(), fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color.DarkGray)
-                        }
-                    }
-
-                    Text(text = mensajeFeedback, color = DoradoTesoro, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(vertical = 10.dp))
-
-                    // 3. BOTONES DE ACCIÓN
-                    Row {
-                        Button(
-                            onClick = { if (palabraActual.isNotEmpty()) palabraActual = palabraActual.dropLast(1) },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaderaTimon)
-                        ) { Text("BORRAR", fontWeight = FontWeight.Bold) }
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Button(
-                            onClick = {
-                                val intento = palabraActual.lowercase().trim()
-                                if (nivelActual.soluciones.contains(intento) && !palabrasEncontradas.contains(intento)) {
-                                    palabrasEncontradas = palabrasEncontradas + intento
-                                    puntos += (intento.length - 2)
-                                    mensajeFeedback = "¡Excelente hallazgo!"
-                                    palabraActual = ""
-                                } else { mensajeFeedback = "Esa no sirve, marinero" }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = DoradoTesoro)
-                        ) { Text("ENVIAR", color = Color.Black, fontWeight = FontWeight.Black) }
-                    }
-
-                    Spacer(modifier = Modifier.height(20.dp))
-
-                    // 4. HISTORIAL DE PALABRAS (Recuadro más opaco para legibilidad)
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.History, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("PALABRAS DESCUBIERTAS (${palabrasEncontradas.size})", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Surface(
-                            color = Color.White.copy(alpha = 0.45f),
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth().height(60.dp),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.3f))
+                    // --- BLOQUE SUPERIOR (Información) ---
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaderaTimon),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                         ) {
-                            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                items(palabrasEncontradas.toList()) { palabra ->
-                                    Text(text = palabra.uppercase() + "   ", color = Color.White, fontWeight = FontWeight.Black, fontSize = 22.sp)
+                            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Stars, contentDescription = null, tint = DoradoTesoro, modifier = Modifier.size(24.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("BOTÍN TOTAL", color = Color.White, fontWeight = FontWeight.Bold)
                                 }
+                                Text("$puntos Puntos", color = DoradoTesoro, fontSize = 24.sp, fontWeight = FontWeight.Black)
                             }
                         }
+
+                        Spacer(Modifier.height(20.dp))
+                        Text("Rumbo al siguiente puerto: ${palabrasEncontradas.size}/$metaPalabras", color = BlancoEspuma, fontSize = 20.sp)
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = { progreso },
+                            modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(10.dp)),
+                            color = DoradoTesoro,
+                            trackColor = MaderaTimon.copy(alpha = 0.4f)
+                        )
                     }
 
-                    // Spacer final con weight(1f) para empujar todo el contenido hacia arriba.
-                    Spacer(Modifier.weight(1f))
+                    // --- BLOQUE CENTRAL (Juego) ---
+                    // Este `Column` usa `weight(1f)` para ocupar todo el espacio sobrante
+                    // y luego centra el timón en su interior.
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        PanelDeJuego(
+                            letrasExteriores = nivelActual.letrasExteriores,
+                            letraObligatoria = nivelActual.letraCentral,
+                            alPulsarLetra = { if (palabraActual.length < 10) palabraActual += it }
+                        )
+                    }
+
+
+                    // --- BLOQUE INFERIOR (Controles) ---
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(bottom = 16.dp)) {
+                        Surface(
+                            color = Color.White.copy(alpha = 0.9f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth(0.85f).height(60.dp),
+                            border = BorderStroke(3.dp, MaderaTimon)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(palabraActual.uppercase(), fontSize = 34.sp, fontWeight = FontWeight.Black, color = Color.DarkGray)
+                            }
+                        }
+
+                        Text(text = mensajeFeedback, color = DoradoTesoro, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(vertical = 10.dp))
+
+                        Row {
+                            Button(
+                                onClick = { if (palabraActual.isNotEmpty()) palabraActual = palabraActual.dropLast(1) },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaderaTimon)
+                            ) { Text("BORRAR", fontWeight = FontWeight.Bold) }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Button(
+                                onClick = {
+                                    val intento = palabraActual.lowercase().trim()
+                                    if (nivelActual.soluciones.contains(intento) && !palabrasEncontradas.contains(intento)) {
+                                        palabrasEncontradas = palabrasEncontradas + intento
+                                        puntos += (intento.length - 2)
+                                        mensajeFeedback = "¡Excelente hallazgo!"
+                                        palabraActual = ""
+                                    } else {
+                                        mensajeFeedback = "Esa no sirve, marinero"
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = DoradoTesoro)
+                            ) { Text("ENVIAR", color = Color.Black, fontWeight = FontWeight.Bold) }
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-// 5. CEREBRO: GENERADOR DE NIVELES (ALGORITMO)
-
-/**
- * Esta función es pura lógica matemática. Elige un pangrama, baraja
- * letras y filtra el diccionario para asegurar un nivel de calidad.
- */
 fun generarNivelPorDificultad(recursos: RecursoJuego, nivel: Int): DatosNivel {
-    val minSoluciones = 10
-    var resultado: DatosNivel? = null
-    var intentos = 0
-    while (resultado == null && intentos < 100) {
-        intentos++
+    repeat(100) {
         val pangrama = recursos.listaPangramas.randomOrNull() ?: "marinos"
         val letrasSet = pangrama.toSet().map { it.toString().uppercase() }.shuffled()
         val central = letrasSet[0]
         val validasChar = pangrama.lowercase().toSet()
+
         val soluciones = recursos.diccionarioFiltrado.filter { p ->
             p.contains(central.lowercase()) && p.all { it in validasChar }
         }.toSet()
-        if (soluciones.size >= minSoluciones) {
-            resultado = DatosNivel(central, letrasSet.subList(1, 7), soluciones, 0)
+
+        if (soluciones.size >= 10) {
+            return DatosNivel(central, letrasSet.subList(1, 7), soluciones, soluciones.sumOf { it.length - 2 })
         }
     }
-    return resultado ?: DatosNivel("E", listOf("A", "T", "M", "S", "R", "O"), setOf("tesoro", "meta"), 0)
+    return DatosNivel("A", listOf("E", "T", "M", "S", "R", "O"), setOf("mar", "amor", "arte"), 10)
 }

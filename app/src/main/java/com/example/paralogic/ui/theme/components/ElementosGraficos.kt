@@ -15,50 +15,38 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.paralogic.ui.theme.*
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
  * Representa una única letra interactiva del juego, con un diseño de "boya" flotante.
- *
- * @param letra El carácter a mostrar en la boya.
- * @param esCentral Booleano para determinar si es la letra principal (true) o una secundaria (false).
- *                  Esto cambia su color de fondo y de texto para destacarla.
- * @param onClick Lambda que se ejecuta al pulsar la boya, devolviendo la letra que contiene.
  */
 @Composable
 fun BoyaLetra(letra: String, esCentral: Boolean = false, onClick: (String) -> Unit) {
-    // Determina el esquema de color basado en si la boya es la central o no.
     val fondoCromado = if (esCentral) DoradoTesoro else BlancoEspuma
     val colorDelTexto = if (esCentral) Color.Black else AzulProfundo
 
-    // ---- Animación de "Latido" o "Burbuja" ----
-    // `rememberInfiniteTransition` crea una animación que se repite de forma indefinida.
     val infiniteTransition = rememberInfiniteTransition(label = "burbuja_letra")
-
-    // `animateFloat` define el valor que cambiará con el tiempo. En este caso, la escala.
     val escala by infiniteTransition.animateFloat(
-        initialValue = 1f,      // Tamaño normal
-        targetValue = 1.07f,    // Crece un 7%
+        initialValue = 1f,
+        targetValue = 1.07f,
         animationSpec = infiniteRepeatable(
-            // `tween` define cómo se pasa del valor inicial al final (duración y ritmo).
             animation = tween(1400, easing = FastOutSlowInEasing),
-            // `RepeatMode.Reverse` hace que la animación vaya de 1 a 1.07 y luego de 1.07 a 1.
             repeatMode = RepeatMode.Reverse
         ),
         label = "escala_boya"
     )
-    // ---- Fin de la Animación ----
 
     Card(
         modifier = Modifier
-            .size(75.dp) // Tamaño fijo para la boya.
-            .padding(4.dp) // Espacio para que no se peguen entre sí.
-            .scale(escala) // Aplicamos el valor de la animación a la escala del componente.
-            .clickable { onClick(letra) }, // El componente es pulsable y notifica la letra.
-        shape = CircleShape, // Forma circular.
-        colors = CardDefaults.cardColors(containerColor = fondoCromado), // Color de fondo.
-        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp) // Sombra para dar profundidad.
+            .size(75.dp) // Mantenemos un tamaño fijo para las boyas para que sean legibles.
+            .padding(4.dp)
+            .scale(escala)
+            .clickable { onClick(letra) },
+        shape = CircleShape,
+        colors = CardDefaults.cardColors(containerColor = fondoCromado),
+        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
     ) {
-        // `Box` se usa para centrar el texto dentro de la `Card`.
         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
             Text(
                 text = letra.uppercase(),
@@ -71,12 +59,8 @@ fun BoyaLetra(letra: String, esCentral: Boolean = false, onClick: (String) -> Un
 }
 
 /**
- * Dibuja el panel de juego completo, conocido como el "Timón", que contiene
- * la letra central y las 6 letras exteriores dispuestas en círculo.
- *
- * @param letrasExteriores Una lista con las 6 letras que rodearán la letra central.
- * @param letraObligatoria La letra central del juego.
- * @param alPulsarLetra Lambda que se ejecuta cuando se pulsa cualquier `BoyaLetra`.
+ * Dibuja el panel de juego completo, conocido como el "Timón", de forma adaptativa.
+ * Se ajusta a cualquier tamaño de pantalla usando BoxWithConstraints y trigonometría.
  */
 @Composable
 fun PanelDeJuego(
@@ -84,40 +68,49 @@ fun PanelDeJuego(
     letraObligatoria: String,
     alPulsarLetra: (String) -> Unit
 ) {
-    // `Box` actúa como un lienzo para posicionar las boyas libremente.
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .height(420.dp), // Altura fija para el área del timón.
-        contentAlignment = Alignment.Center // Centra los elementos hijos por defecto.
+            .aspectRatio(1f), // Forzamos a que el área de juego sea un cuadrado perfecto.
+        contentAlignment = Alignment.Center
     ) {
-        // Dibuja el borde de madera del timón.
+        // ---- Cálculo de Radios para un Diseño Adaptativo ----
+        // El objetivo es que el aro de madera pase por el centro de las boyas exteriores
+        // y que todo el conjunto quepa perfectamente en la pantalla.
+
+        // 1. Definimos el diámetro total que ocupará el timón con las boyas incluidas.
+        //    Dejamos un pequeño margen del 5% a cada lado (total 10%).
+        val diametroTotalVisible = maxWidth * 0.9f
+
+        // 2. Para que el aro pase por el centro de las boyas, su diámetro debe ser el
+        //    diámetro total menos el tamaño de una boya (la mitad de una boya a cada lado).
+        val diametroDelAro = diametroTotalVisible - 75.dp // 75.dp es el tamaño de BoyaLetra
+
+        // 3. El radio para posicionar las boyas es, por tanto, la mitad del diámetro del aro.
+        val radioDeBoyas = diametroDelAro / 2
+
+        // Dibuja el aro de madera del timón usando el diámetro dinámico.
         Surface(
-            modifier = Modifier.size(250.dp), // El diámetro del borde.
+            modifier = Modifier.size(diametroDelAro),
             shape = CircleShape,
-            color = Color.Transparent, // Es solo un borde, el interior es transparente.
+            color = Color.Transparent,
             border = BorderStroke(12.dp, MaderaTimon)
         ) {}
 
-        // Coloca la BoyaLetra central. Se renderiza justo en el centro del Box.
+        // Colocamos la letra central. Siempre estará en el centro del `Box`.
         BoyaLetra(letra = letraObligatoria, esCentral = true, onClick = alPulsarLetra)
 
-        // ---- Posicionamiento de las 6 letras exteriores ----
-        // Se definen 6 modificadores `offset` para desplazar cada boya desde el centro
-        // y formar un hexágono perfecto.
-        val posiciones = listOf(
-            Modifier.offset(y = (-115).dp),                     // Arriba
-            Modifier.offset(x = 100.dp, y = (-55).dp),          // Arriba-derecha
-            Modifier.offset(x = 100.dp, y = 55.dp),           // Abajo-derecha
-            Modifier.offset(y = 115.dp),                      // Abajo
-            Modifier.offset(x = (-100).dp, y = 55.dp),          // Abajo-izquierda
-            Modifier.offset(x = (-100).dp, y = (-55).dp)           // Arriba-izquierda
-        )
+        // ---- Posicionamiento Trigonométrico de las Letras Exteriores ----
+        val anguloEntreLetras = (2 * Math.PI / letrasExteriores.size).toFloat()
 
-        // Itera sobre las letras exteriores y las coloca en su posición.
-        letrasExteriores.take(6).forEachIndexed { indice, letra ->
-            // `Box` con el modificador de posición para colocar la boya.
-            Box(modifier = posiciones[indice]) {
+        letrasExteriores.forEachIndexed { indice, letra ->
+            val anguloActual = anguloEntreLetras * indice
+
+            // Usamos el `radioDeBoyas` que hemos calculado para asegurar la alineación.
+            val offsetX = radioDeBoyas * cos(anguloActual)
+            val offsetY = radioDeBoyas * sin(anguloActual)
+
+            Box(modifier = Modifier.offset(x = offsetX, y = offsetY)) {
                 BoyaLetra(letra = letra, esCentral = false, onClick = alPulsarLetra)
             }
         }
